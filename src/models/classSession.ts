@@ -7,6 +7,7 @@ const sessionSchema = new Schema<IClassSessions>({
   participantsHistory: [{ type: Schema.Types.ObjectId, ref: 'Participant' }],
   currentParticipants: [{ type: Schema.Types.ObjectId, ref: 'Participant' }],
   classRoomId: { type: Schema.Types.ObjectId, ref: 'Classroom' },
+  eventLog: [{ type: Schema.Types.ObjectId, ref: 'EventLog' }],
 });
 
 export const ClassSession = model<IClassSessions, IClassSessionsModel>(
