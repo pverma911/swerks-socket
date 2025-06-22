@@ -2,7 +2,7 @@ import { model, Schema } from 'mongoose';
 import { IClassSessions, IClassSessionsModel } from '../interfaces/classSessions.interface';
 
 const sessionSchema = new Schema<IClassSessions>({
-  startedAt: { type: Date, required: true, default: new Date() },
+  startedAt: { type: Date, required: false },
   endedAt: { type: Date },
   participantsHistory: [{ type: Schema.Types.ObjectId, ref: 'Participant' }],
   currentParticipants: [{ type: Schema.Types.ObjectId, ref: 'Participant' }],

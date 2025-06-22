@@ -90,12 +90,14 @@ export class ClassRoomService extends ResponseService {
     // Create a session for the class
     const session = new ClassSession({
       currentParticipants: [teacherId],
+      participantsHistory: [teacherId],
       classRoomId: roomId,
+      startedAt: new Date(),
     });
 
     await session.save();
 
-    logger.info(`Session for class ${roomId}has been created`);
+    logger.info(`Session for class ${roomId} has been created`);
 
     return session;
   }
@@ -114,15 +116,19 @@ export class ClassRoomService extends ResponseService {
     return session;
   }
 
-  async leaveClassSession(sessionId: string, userId: string) {
+  async leaveClassSession(sessionId: string, userId: string, role: UserRole) {
     const session = await ClassSession.findById(sessionId);
 
     if (!session) throw new Error('Session does not exist');
 
     session.currentParticipants = session.currentParticipants.filter(
-      (participant) => participant === userId
+      (participant) => participant != userId
     );
-    session.endedAt = new Date();
+
+    if (role === UserRole.TEACHER) {
+      session.endedAt = new Date();
+      session.currentParticipants = [];
+    }
 
     await session.save();
 
@@ -160,10 +166,11 @@ export class ClassRoomService extends ResponseService {
     return session;
   }
 
-  async activeSessionsList() {
+  async activeSessionsListWithRoomId(roomId: string) {
     // Create a session for the class
     const session = await ClassSession.find({
       endedAt: { $exists: false },
+      classRoomId: roomId,
     })
       .populate('classRoomId')
       .lean();
@@ -173,13 +180,92 @@ export class ClassRoomService extends ResponseService {
     return session;
   }
 
+  async joinSessionViaSessionList(sessionId: string, participant: IParticipants) {
+    // Create a session for the class
+    const session = await ClassSession.findById(sessionId).populate('classRoomId');
+    if (!session) throw new Error('Session not found');
+
+    const classRoom = session.classRoomId;
+    if (!classRoom) throw new Error('Classroom not associated with session');
+
+    let getParticipant = await Participant.findOne({ email: participant.email });
+
+    if (!getParticipant) {
+      // If not exists, create and add directly to both
+      getParticipant = await Participant.create(participant);
+
+      classRoom.studentParticipant.push(participant.id);
+      classRoom.participantHistory.push(participant.id);
+      session.currentParticipants.push(participant.id);
+      session.participantsHistory.push(participant.id);
+
+      await Promise.all([classRoom.save(), session.save()]);
+      return { getParticipant, classRoomId: classRoom.id };
+    }
+
+    // 1. Check if already in session
+    const alreadyInSession = session.currentParticipants.some(
+      (p: any) => p?.toString() == participant._id
+    );
+    if (alreadyInSession) throw new Error('User is already in this session somewhere');
+
+    // 2. Check if already in classroom
+    const alreadyInClassroom = classRoom.studentParticipant.some(
+      (s: any) => s?.toString() == participant._id
+    );
+
+    // 3. Add to classroom if not present
+    if (!alreadyInClassroom) {
+      classRoom.studentParticipant.push(participant.id);
+      classRoom.participantHistory.push(participant.id);
+
+      await classRoom.save();
+    }
+
+    // 4. Add to session
+    session.currentParticipants.push(participant.id);
+    session.participantsHistory.push(participant.id);
+
+    await session.save();
+    return { getParticipant, classRoomId: classRoom.id };
+  }
+
   findByClassRoomId(roomId: string) {
     return ClassRoom.findById(roomId).populate('studentParticipant').populate('teacherParticipant');
   }
 
-  findByClassSession(roomId: string) {
-    return ClassSession.findById(roomId)
-      .populate('studentParticipant')
-      .populate('teacherParticipant');
+  async findByClassSession(sessionId: string) {
+    const session = await ClassSession.findById(sessionId)
+      .populate('currentParticipants')
+      .populate('classRoomId')
+      .lean();
+
+    if (!session) return null;
+
+    const studentParticipant: IParticipants[] = [];
+    const teacherParticipant: IParticipants[] = [];
+
+    (session.currentParticipants as unknown as IParticipants[]).map((participant) => {
+      if (participant.role === UserRole.TEACHER) {
+        teacherParticipant.push(participant);
+      } else {
+        studentParticipant.push(participant);
+      }
+    });
+
+    (session as any).teacherParticipant = teacherParticipant;
+    (session as any).studentParticipant = studentParticipant;
+    (session as any).name = session.classRoomId.name;
+    return session;
+  }
+
+  async findParticipantByEmail(participant: IParticipants) {
+    const user = await Participant.findByEmail(participant.email);
+
+    if (!user) {
+      return await Participant.create(participant);
+    }
+
+    return user;
   }
 }

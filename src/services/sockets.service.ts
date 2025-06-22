@@ -45,15 +45,26 @@ export class SocketService {
     this.io.on('connection', (socket: Socket) => {
       logger.info(`Socket connected: ${socket.id}`);
 
-      socket.on('join-classroom', (data: IJoinClassRoom) => this.handleJoinClassroom(socket, data));
+      socket.on('join-classroom', (data: IJoinClassRoom) =>
+        this.handleJoinSessionViaList(socket, data)
+      );
 
       socket.on('leave-classroom', () => this.handleLeaveClassroom(socket));
 
       socket.on('start-class', () => this.handleStartClass(socket));
 
+      socket.on('start-class-room', (data) => this.handleStartClassRoom(socket, data));
+
       socket.on('end-class', () => this.handleEndClass(socket));
 
       socket.on('get-active-sessions', () => this.handlActiveSessionList(socket));
+      socket.on('get-active-sessions-room', (data: { roomId: string }) =>
+        this.handlActiveSessionListWithRoomId(socket, data)
+      );
+
+      socket.on('get-user', (data) => this.getUser(socket, data));
+
+      socket.on('join-session', (data) => this.handleJoinSessionViaList(socket, data));
 
       socket.on('disconnect', () => this.handleDisconnect(socket));
     });
@@ -100,7 +111,7 @@ export class SocketService {
     }
   }
 
-   async handleJoinSessionViaList(socket: Socket, data: IJoinClassRoom): Promise<void> {
+  async handleJoinSessionViaList(socket: Socket, data: IJoinClassRoom): Promise<void> {
     try {
       // const { error } = validateJoinRequest(data);
       // if (error) {
@@ -109,18 +120,22 @@ export class SocketService {
       // }
 
       const { sessionId, participant } = data;
-      const classParticipant = await this.classroomService.joinClassroom(data);
+      const classParticipant = await this.classroomService.joinSessionViaSessionList(
+        sessionId,
+        participant
+      );
 
       // Set socket properties
-      socket.join(roomId);
-      socket.data.userId = String(classParticipant._id);
-      socket.data.roomId = roomId;
-      socket.data.role = classParticipant.role;
+      socket.join(sessionId);
+      socket.data.userId = classParticipant.getParticipant.id;
+      socket.data.roomId = classParticipant.classRoomId;
+      socket.data.role = classParticipant.getParticipant.role;
+      socket.data.sessionId = sessionId;
 
-      const classroomState = await this.classroomService.findByClassRoomId(roomId);
+      const classroomState = await this.classroomService.findByClassSession(sessionId);
 
       // Emit to all participants in the room
-      this.io.to(roomId).emit('classroom-updated', classroomState);
+      this.io.to(sessionId).emit('classroom-updated', classroomState);
 
       // Send success response to the joining participant
       socket.emit('join-success', {
@@ -128,11 +143,27 @@ export class SocketService {
         classroom: classroomState,
       });
 
-      logger.info(`${participant.name} joined classroom ${roomId}`);
+      logger.info(`${participant.name} joined classroom with sessionId ${sessionId}`);
     } catch (error) {
       console.log(error);
       this.emitError(socket, (error as Error).message);
       logger.error('Join classroom error:', error);
+    }
+  }
+
+  async getUser(socket: Socket, data: IJoinClassRoom): Promise<void> {
+    try {
+      logger.info('Get User info triggered:');
+
+      const { participant } = data;
+
+      const getParticipant = await this.classroomService.findParticipantByEmail(participant);
+
+      socket.emit('set-user', getParticipant);
+    } catch (error) {
+      console.log(error);
+      this.emitError(socket, (error as Error).message);
+      logger.error('Get User error:', error);
     }
   }
 
@@ -146,15 +177,19 @@ export class SocketService {
         return;
       }
 
-      const session = await this.classroomService.leaveClassSession(
+      await this.classroomService.leaveClassSession(
         socket.data.sessionId,
-        socket.data.userId
+        socket.data.userId,
+        socket.data.role
       );
 
       socket.leave(socket.data.sessionId);
 
+      const classroomState = await this.classroomService.findByClassSession(socket.data.sessionId);
+
       // Emit to remaining participants
-      socket.to(socket.data.sessionId).emit('classroom-session-updated', session);
+      // socket.to(socket.data.sessionId).emit('classroom-session-updated', session);
+      this.io.to(socket.data.sessionId).emit('classroom-updated', classroomState);
 
       socket.emit('leave-success', { message: 'Left classroom successfully' });
 
@@ -184,10 +219,46 @@ export class SocketService {
       );
       socket.data.sessionId = session._id;
 
-      this.io.to(socket.data.roomId!).emit('class-session-updated', session);
-      this.io.to(socket.data.roomId!).emit('class-room-created', {
+      this.io.to(socket.data.sessionId).emit('class-session-updated', session);
+      this.io.to(socket.data.sessionId).emit('class-room-created', {
         message: 'Class Room has started',
         startedBy: socket.data.userId,
+      });
+
+      logger.info(`Class Room created with id ${socket.data.roomId} by ${socket.data.userId}`);
+    } catch (error) {
+      this.emitError(socket, (error as Error).message);
+      logger.error('Start class error:', error);
+    }
+  }
+
+  public async handleStartClassRoom(socket: Socket, data: any): Promise<void> {
+    try {
+      if (data.participant.role === UserRole.STUDENT) {
+        this.emitError(socket, 'Only teachers can start the class');
+        return;
+      }
+
+      const session = await this.classroomService.startClass(data.roomId, data.participant._id);
+      socket.data.sessionId = session.id;
+      socket.data.userId = data.participant._id;
+      socket.data.roomId = data.roomId;
+      socket.data.role = data.participant.role;
+
+      // this.io.to(socket.data.sessionId).emit('class-session-updated', session);
+      // this.io.to(socket.data.sessionId).emit('class-room-created', {
+      //   message: 'Class Room has started',
+      //   startedBy: socket.data.userId,
+      // });
+
+      const classroomState = await this.classroomService.findByClassSession(socket.data.sessionId);
+      socket.join(socket.data.sessionId);
+      this.io.to(socket.data.sessionId).emit('classroom-updated', classroomState);
+
+      // Send success response to the joining participant
+      socket.emit('join-success', {
+        message: 'Successfully joined classroom',
+        classroom: classroomState,
       });
 
       logger.info(`Class Room created with id ${socket.data.roomId} by ${socket.data.userId}`);
@@ -210,6 +281,23 @@ export class SocketService {
     }
   }
 
+  public async handlActiveSessionListWithRoomId(
+    socket: Socket,
+    data: { roomId: string }
+  ): Promise<void> {
+    try {
+      const { roomId } = data;
+      const sessions = await this.classroomService.activeSessionsListWithRoomId(roomId);
+
+      socket.emit('active-sessions-list', sessions);
+
+      logger.info('active-sessions-list');
+    } catch (error) {
+      this.emitError(socket, (error as Error).message);
+      logger.error('Start class error:', error);
+    }
+  }
+
   /**
    * Handles ending a class (teacher only)
    */
@@ -222,10 +310,17 @@ export class SocketService {
 
       const session = await this.classroomService.endClass(socket.data.sessionId);
 
-      this.io.to(socket.data.roomId!).emit('class-session-updated', session);
-      this.io.to(socket.data.roomId!).emit('class-session-ended', {
+      this.io.to(socket.data.sessionId).emit('class-session-updated', session);
+      this.io.to(socket.data.sessionId).emit('class-session-ended', {
         message: 'Class session has ended',
         endedBy: socket.data.userId,
+      });
+
+      socket.leave(socket.data.sessionId);
+      const socketsInRoom = await this.io.in(socket.data.sessionId).fetchSockets();
+
+      socketsInRoom.forEach((s) => {
+        s.leave(socket.data.sessionId);
       });
 
       logger.info(`Class session ended in ${socket.data.roomId} by ${socket.data.userId}`);
@@ -244,12 +339,7 @@ export class SocketService {
     // Auto-leave classroom on disconnect
     if (socket.data.roomId && socket.data.userId && socket.data.sessionId) {
       try {
-        const session = await this.classroomService.leaveClassSession(
-          socket.data.sessionId,
-          socket.data.userId
-        );
-
-        socket.to(socket.data.roomId).emit('classroom-session-updated', session);
+       await this.handleLeaveClassroom(socket)
         logger.info(
           `${socket.data.userId} auto-left classroom ${socket.data.roomId} due to disconnect`
         );

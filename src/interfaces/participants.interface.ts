@@ -1,4 +1,4 @@
-import { Model } from 'mongoose';
+import { Document, Model } from 'mongoose';
 import { UserRole } from '../enums/userRole.enum';
 
 export interface IParticipants extends Document {

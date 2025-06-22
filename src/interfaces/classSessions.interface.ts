@@ -1,8 +1,8 @@
-import { Model } from 'mongoose';
+import { Document, Model } from 'mongoose';
 import { IParticipants } from './participants.interface';
 import { IClassRoom } from './classRoom.interface';
 
-export interface IClassSessions {
+export interface IClassSessions extends Document {
   startedAt?: Date;
   endedAt?: Date;
   participantsHistory: Array<IParticipants>;

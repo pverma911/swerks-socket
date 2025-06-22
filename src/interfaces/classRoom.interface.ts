@@ -1,4 +1,4 @@
-import { Model } from 'mongoose';
+import { Document, Model } from 'mongoose';
 import { IClassSessions } from './classSessions.interface';
 import { IParticipants } from './participants.interface';
 
@@ -22,6 +22,7 @@ export interface ICreateClassRoom {
 }
 
 export interface IJoinClassRoom {
+  sessionId: string;
   roomId: string;
   participant: IParticipants;
 }
