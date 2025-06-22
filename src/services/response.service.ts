@@ -24,7 +24,7 @@ abstract class ResponseService {
 
   protected serviceResponse = (
     statusCode: number,
-    data: object,
+    data: Record<string,any>,
     message: string,
   ) => {
     return { statusCode, data, message }

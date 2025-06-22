@@ -26,7 +26,6 @@ export class ClassRoomService extends ResponseService {
   async create(payload: ICreateClassRoom) {
     const { name } = payload;
     const classroom = new ClassRoom({
-      roomId: uuid(),
       name,
     });
 
@@ -35,7 +34,7 @@ export class ClassRoomService extends ResponseService {
     return this.serviceResponse(HttpStatusCode.CREATED, { roomId: _id }, 'Class room created');
   }
 
-  async joinClassroom(payload: IJoinClassRoom) {
+  async joinClassroom(payload: Omit<IJoinClassRoom, 'sessionId'>) {
     try {
       const {
         roomId,

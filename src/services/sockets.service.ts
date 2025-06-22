@@ -1,33 +1,8 @@
 import { Server, Socket } from 'socket.io';
-// import { validateJoinRequest, validateClassAction } from '../utils/validation';
 import { ClassRoomService } from './classRoom.service';
 import logger from '../utils/logger';
 import { IJoinClassRoom } from '../interfaces/classRoom.interface';
 import { UserRole } from '../enums/userRole.enum';
-
-// Types for better type safety
-interface JoinClassroomData {
-  roomId: string;
-  participant: {
-    userId: string;
-    name: string;
-    role: 'teacher' | 'student';
-  };
-}
-
-interface ClassroomSocket extends Socket {
-  userId: string;
-  roomId: string;
-  sessionId: string;
-  role: UserRole;
-}
-
-interface ClassroomState {
-  id: string;
-  participants: any[];
-  status: 'waiting' | 'active' | 'ended';
-  // Add other classroom state properties as needed
-}
 
 export class SocketService {
   private io: Server;
@@ -70,7 +45,7 @@ export class SocketService {
       socket.on('disconnect', () => this.handleDisconnect(socket));
     });
 
-    logger.info('Sockets has been initialized');
+    logger.info('Socket.io has been initialized');
   }
 
   /**
@@ -78,12 +53,6 @@ export class SocketService {
    */
   async handleJoinClassroom(socket: Socket, data: IJoinClassRoom): Promise<void> {
     try {
-      // const { error } = validateJoinRequest(data);
-      // if (error) {
-      //   this.emitError(socket, error.details[0].message);
-      //   return;
-      // }
-
       const { roomId, participant } = data;
       const classParticipant = await this.classroomService.joinClassroom(data);
 
@@ -114,12 +83,6 @@ export class SocketService {
 
   async handleJoinSessionViaList(socket: Socket, data: IJoinClassRoom): Promise<void> {
     try {
-      // const { error } = validateJoinRequest(data);
-      // if (error) {
-      //   this.emitError(socket, error.details[0].message);
-      //   return;
-      // }
-
       const { sessionId, participant } = data;
       const classParticipant = await this.classroomService.joinSessionViaSessionList(
         sessionId,
@@ -320,6 +283,7 @@ export class SocketService {
       socket.leave(socket.data.sessionId);
       const socketsInRoom = await this.io.in(socket.data.sessionId).fetchSockets();
 
+      // All sockets get disconnected
       socketsInRoom.forEach((s) => {
         s.leave(socket.data.sessionId);
       });
@@ -340,7 +304,7 @@ export class SocketService {
     // Auto-leave classroom on disconnect
     if (socket.data.roomId && socket.data.userId && socket.data.sessionId) {
       try {
-       await this.handleLeaveClassroom(socket)
+        await this.handleLeaveClassroom(socket);
         logger.info(
           `${socket.data.userId} auto-left classroom ${socket.data.roomId} due to disconnect`
         );
@@ -394,52 +358,4 @@ export class SocketService {
     delete socket.data.roomId;
     delete socket.data.role;
   }
-
-  /**
-   * Gets classroom state for a specific room
-   */
-  //   public async getClassroomState(roomId: string): Promise<ClassroomState | null> {
-  //     try {
-  //       const classroom = await this.classroomService.getClassroom(roomId);
-  //       return this.classroomService.getClassroomState(classroom);
-  //     } catch (error) {
-  //       logger.error('Get classroom state error:', error);
-  //       return null;
-  //     }
-  //   }
-
-  /**
-   * Forcefully removes a participant from classroom (admin function)
-   */
-  //   public async removeParticipant(roomId: string, userId: string): Promise<void> {
-  //     try {
-  //       const classroom = await this.classroomService.leaveClassroom(roomId, userId);
-  //       const classroomState = this.classroomService.getClassroomState(classroom);
-
-  //       // Find and disconnect the socket
-  //       const sockets = await this.io.in(roomId).fetchSockets();
-  //       const targetSocket = sockets.find((s) => (s as ClassroomSocket).userId === userId);
-
-  //       if (targetSocket) {
-  //         targetSocket.leave(roomId);
-  //         targetSocket.emit('removed-from-classroom', {
-  //           message: 'You have been removed from the classroom',
-  //           roomId,
-  //         });
-  //         this.clearSocketData(targetSocket as ClassroomSocket);
-  //       }
-
-  //       // Notify remaining participants
-  //       this.io.to(roomId).emit('classroom-updated', classroomState);
-  //       this.io.to(roomId).emit('participant-removed', {
-  //         message: 'A participant has been removed',
-  //         userId,
-  //       });
-
-  //       logger.info(`${userId} was removed from classroom ${roomId}`);
-  //     } catch (error) {
-  //       logger.error('Remove participant error:', error);
-  //       throw error;
-  //     }
-  //   }
 }

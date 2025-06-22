@@ -3,13 +3,10 @@ import path from 'path';
 
 const { combine, timestamp, printf, colorize } = format;
 
-// Helper to get caller file name
 function getCallerFile(): string {
     const stack = new Error().stack?.split('\n');
     if (!stack) return 'unknown';
-    // Stack[0] = Error
-    // Stack[1] = at getCallerFile
-    // Stack[2] = at actual caller
+
     const callerLine = stack[3] || '';
     const match = callerLine.match(/\((.*):\d+:\d+\)/) || callerLine.match(/at (.*):\d+:\d+/);
     if (match && match[1]) {
