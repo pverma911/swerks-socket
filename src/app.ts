@@ -6,19 +6,35 @@ import { connectToDb } from './config/db.config';
 import logger from './utils/logger';
 import { IRoutes } from './interfaces/route.interface';
 import { routes } from './routes';
+import { Server as SocketIOServer } from 'socket.io';
+import { SocketService } from './services/sockets.service';
+import cors from "cors"
 
 export class App {
   private app: Express;
   private server: Server;
+  private io: SocketIOServer;
   constructor() {
     this.app = express();
     this.server = http.createServer(this.app);
+    this.io = new SocketIOServer(this.server, {
+      cors: {
+        origin: '*', // Update this for production
+        methods: ['GET', 'POST'],
+      },
+    });
     this.setupMiddlewares();
     this.initializeRoutes(routes);
-    this.initializeErrorHandler()
+    this.initializeErrorHandler();
+    this.initializeSockets();
+  }
+
+  initializeSockets() {
+    new SocketService(this.io);
   }
 
   setupMiddlewares() {
+    this.app.use(cors())
     this.app.use(express.json());
     this.app.use(express.urlencoded({ extended: true }));
     this.app.use(errorHandler);
@@ -41,7 +57,7 @@ export class App {
   async start(port: number) {
     try {
       await this.startDb();
-      this.app.listen(port, () => {
+      this.server.listen(port, () => {
         logger.info(`Server running on port ${port}`);
       });
     } catch (error) {
@@ -55,7 +71,7 @@ export class App {
     });
   }
 
-  private initializeErrorHandler(){
-    this.app.use(errorHandler)
+  private initializeErrorHandler() {
+    this.app.use(errorHandler);
   }
 }

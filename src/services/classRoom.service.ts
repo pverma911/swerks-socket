@@ -38,7 +38,7 @@ export class ClassRoomService extends ResponseService {
         roomId,
         participant: { name, role, email },
       } = payload;
-      const classroom = await ClassRoom.findOne({ roomId });
+      const classroom = await ClassRoom.findById(roomId);
 
       if (!classroom) throw new Error('Class Room does not exist');
 
@@ -148,10 +148,12 @@ export class ClassRoomService extends ResponseService {
   }
 
   findByClassRoomId(roomId: string) {
-    return ClassRoom.findById(roomId).populate('studentParticipant');
+    return ClassRoom.findById(roomId).populate('studentParticipant').populate('teacherParticipant');
   }
 
   findByClassSession(roomId: string) {
-    return ClassSession.findById(roomId).populate('studentParticipant');
+    return ClassSession.findById(roomId)
+      .populate('studentParticipant')
+      .populate('teacherParticipant');
   }
 }

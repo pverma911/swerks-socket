@@ -55,6 +55,8 @@ export class SocketService {
 
       socket.on('disconnect', () => this.handleDisconnect(socket));
     });
+
+    logger.info("Sockets has been initialized")
   }
 
   /**
@@ -77,7 +79,7 @@ export class SocketService {
       socket.data.roomId = roomId;
       socket.data.role = classParticipant.role;
 
-      const classroomState = this.classroomService.findByClassRoomId(roomId);
+      const classroomState = await this.classroomService.findByClassRoomId(roomId);
 
       // Emit to all participants in the room
       this.io.to(roomId).emit('classroom-updated', classroomState);
@@ -90,6 +92,7 @@ export class SocketService {
 
       logger.info(`${participant.name} joined classroom ${roomId}`);
     } catch (error) {
+      console.log(error)
       this.emitError(socket, (error as Error).message);
       logger.error('Join classroom error:', error);
     }
@@ -141,6 +144,7 @@ export class SocketService {
         socket.data.roomId,
         socket.data.userId
       );
+      socket.data.sessionId = session._id
 
       this.io.to(socket.data.roomId!).emit('class-session-updated', session);
       this.io.to(socket.data.roomId!).emit('class-room-created', {
@@ -184,7 +188,7 @@ export class SocketService {
    * Handles socket disconnection
    */
   public async handleDisconnect(socket: Socket): Promise<void> {
-    logger.info(`Socket disconnected: ${socket.data.id}`);
+    logger.info(`Socket disconnected: ${socket.id}`);
 
     // Auto-leave classroom on disconnect
     if (socket.data.roomId && socket.data.userId && socket.data.sessionId) {

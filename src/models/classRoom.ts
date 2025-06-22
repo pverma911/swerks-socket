@@ -6,9 +6,9 @@ const classroomSchema = new Schema<IClassRoom, IClassRoomModel>(
   {
     name: { type: String, required: true },
     classSessions: [{ type: Schema.Types.ObjectId, ref: 'ClassSession' }],
-    teacherParticipant: [{ type: Schema.Types.ObjectId, ref: 'Partricipant' }],
-    studentParticipant: [{ type: Schema.Types.ObjectId, ref: 'Partricipant' }],
-    participantHistory: [{ type: Schema.Types.ObjectId, ref: 'Partricipant' }],
+    teacherParticipant: [{ type: Schema.Types.ObjectId, ref: 'Participant' }],
+    studentParticipant: [{ type: Schema.Types.ObjectId, ref: 'Participant' }],
+    participantHistory: [{ type: Schema.Types.ObjectId, ref: 'Participant' }],
     ...BaseModel.getSchemaFields(),
   },
   BaseModel.getSchemaOptions()
@@ -19,7 +19,7 @@ classroomSchema.static('findByRoomId', async function findByRoomId(roomId: strin
 });
 
 classroomSchema.static(
-  'findParticipant',
+  'findParticipantByEmail',
   async function findByRoomId(roomId: string, email: string) {
     const classroom = await this.findOne({ roomId, isActive: true })
       .populate({
