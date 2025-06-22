@@ -9,6 +9,8 @@ import { Participant } from '../models/user';
 import logger from '../utils/logger';
 import ResponseService from './response.service';
 import { v4 as uuid } from 'uuid';
+import { EventType } from '../enums/eventType.enum';
+import EventLog from '../models/eventLog';
 
 export class ClassRoomService extends ResponseService {
   private static instance: ClassRoomService;
@@ -78,6 +80,12 @@ export class ClassRoomService extends ResponseService {
       // Add to history
       (classroom.participantHistory as unknown as IParticipants[]).push(getParticipant);
 
+      // Create event log for joining classroom
+      // ! LOG
+      const eventLog = await this.createEventLog(roomId, getParticipant.id, EventType.JOIN, role);
+
+      // Add event log to classroom
+      classroom.eventLog.push(eventLog.id);
       await classroom.save();
       logger.info(`Participant ${name} joined classroom ${roomId}`);
       return getParticipant;
@@ -98,19 +106,80 @@ export class ClassRoomService extends ResponseService {
 
     await session.save();
 
+    // Create event log for starting class
+    // ! lOG
+    const eventLog = await this.createEventLog(
+      roomId,
+      teacherId,
+      EventType.START_CLASS,
+      UserRole.TEACHER
+    );
+
+    const classroom = await ClassRoom.findById(roomId);
+    if (classroom) {
+      classroom.eventLog.push(eventLog.id);
+      await classroom.save();
+    }
+
     logger.info(`Session for class ${roomId} has been created`);
+
+    // ! lOG
+    session.eventLog.push(eventLog.id);
+    await session.save();
 
     return session;
   }
 
   async endClass(sessionId: string) {
     // Create a session for the class
-    const session = await ClassSession.findById(sessionId);
+    const session = await ClassSession.findById(sessionId).populate('classRoomId');
 
     if (!session) throw new Error('Session does not exist');
+    const roomId = session.classRoomId.id;
+
+    // Get teacher from current participants to log the end event
+    const teacherParticipants = await Participant.find({
+      _id: { $in: session.currentParticipants },
+      role: UserRole.TEACHER,
+    });
+
+    // Create event logs for all current participants leaving
+    // ! LOG
+    const eventLogs = [];
+
+    if (teacherParticipants.length > 0) {
+      for (const participant of teacherParticipants) {
+        const teacherEventLog = await this.createEventLog(
+          roomId,
+          participant.id,
+          EventType.END_CLASS,
+          UserRole.TEACHER
+        );
+        eventLogs.push(teacherEventLog.id);
+      }
+    }
+
+    // Log all other participants leaving
+    const otherParticipants = await Participant.find({
+      _id: { $in: session.currentParticipants },
+      role: { $ne: UserRole.TEACHER },
+    });
+
+    if (otherParticipants.length > 0) {
+      for (const participant of otherParticipants) {
+        const leaveEventLog = await this.createEventLog(
+          roomId,
+          participant.id,
+          EventType.LEAVE,
+          participant.role
+        );
+        eventLogs.push(leaveEventLog._id);
+      }
+    }
 
     session.currentParticipants = [];
     session.endedAt = new Date();
+    session.eventLog.push(...eventLogs);
 
     await session.save();
 
@@ -118,17 +187,29 @@ export class ClassRoomService extends ResponseService {
   }
 
   async leaveClassSession(sessionId: string, userId: string, role: UserRole) {
-    const session = await ClassSession.findById(sessionId);
+    const session = await ClassSession.findById(sessionId).populate('classRoomId');
 
     if (!session) throw new Error('Session does not exist');
+    const classroom = session.classRoomId;
+    //! LOG
+    const eventLog = await this.createEventLog(classroom.id, userId, EventType.LEAVE, role);
 
     session.currentParticipants = session.currentParticipants.filter(
       (participant) => participant != userId
     );
 
+    session.eventLog.push(eventLog.id);
+
     if (role === UserRole.TEACHER) {
+      const endClassEventLog = await this.createEventLog(
+        classroom.id,
+        userId,
+        EventType.END_CLASS,
+        UserRole.TEACHER
+      );
       session.endedAt = new Date();
       session.currentParticipants = [];
+      session.eventLog.push(endClassEventLog.id);
     }
 
     await session.save();
@@ -141,6 +222,8 @@ export class ClassRoomService extends ResponseService {
 
     if (!classroom) throw new Error('Session does not exist');
 
+    const eventLog = await this.createEventLog(roomId, userId, EventType.LEAVE, role);
+
     if (role === UserRole.STUDENT) {
       classroom.studentParticipant = classroom.studentParticipant.filter(
         (participant: string) => participant === userId
@@ -150,6 +233,9 @@ export class ClassRoomService extends ResponseService {
         (participant: string) => participant === userId
       );
     }
+
+    classroom.eventLog.push(eventLog.id);
+    await classroom.save();
 
     return classroom;
   }
@@ -200,6 +286,15 @@ export class ClassRoomService extends ResponseService {
       session.currentParticipants.push(participant.id);
       session.participantsHistory.push(participant.id);
 
+      const eventLog = await this.createEventLog(
+        classRoom.id,
+        getParticipant.id,
+        EventType.JOIN,
+        participant.role
+      );
+
+      session.eventLog.push(eventLog.id);
+
       await Promise.all([classRoom.save(), session.save()]);
       return { getParticipant, classRoomId: classRoom.id };
     }
@@ -215,17 +310,27 @@ export class ClassRoomService extends ResponseService {
       (s: any) => s?.toString() == participant._id
     );
 
+    // Create event log for joining
+    const eventLog = await this.createEventLog(
+      classRoom.id,
+      getParticipant.id,
+      EventType.JOIN,
+      getParticipant.role
+    );
+
     // 3. Add to classroom if not present
     if (!alreadyInClassroom) {
-      classRoom.studentParticipant.push(participant.id);
-      classRoom.participantHistory.push(participant.id);
+      classRoom.studentParticipant.push(getParticipant.id);
+      classRoom.participantHistory.push(getParticipant.id);
+      classRoom.eventLog.push(eventLog.id);
 
       await classRoom.save();
     }
 
     // 4. Add to session
-    session.currentParticipants.push(participant.id);
-    session.participantsHistory.push(participant.id);
+    session.currentParticipants.push(getParticipant.id);
+    session.participantsHistory.push(getParticipant.id);
+    session.eventLog.push(eventLog.id);
 
     await session.save();
     return { getParticipant, classRoomId: classRoom.id };
@@ -333,5 +438,29 @@ export class ClassRoomService extends ResponseService {
       },
       'Class room report retrieved successfully'
     );
+  }
+
+  private async createEventLog(
+    roomId: string,
+    participantId: string,
+    type: EventType,
+    role: UserRole
+  ) {
+    try {
+      const eventLog = new EventLog({
+        roomId,
+        participant: participantId,
+        type,
+        role,
+        timestamp: new Date(),
+      });
+
+      const savedLog = await eventLog.save();
+      logger.info(`Event logged: ${type} for participant ${participantId} in room ${roomId}`);
+      return savedLog;
+    } catch (error) {
+      logger.error('Error creating event log:', error);
+      throw error;
+    }
   }
 }
