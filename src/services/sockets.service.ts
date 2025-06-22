@@ -64,6 +64,7 @@ export class SocketService {
 
       socket.on('get-user', (data) => this.getUser(socket, data));
 
+      // IMP
       socket.on('join-session', (data) => this.handleJoinSessionViaList(socket, data));
 
       socket.on('disconnect', () => this.handleDisconnect(socket));

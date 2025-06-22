@@ -29,4 +29,16 @@ export class ClassRoomController extends ResponseService {
       next(error);
     }
   }
+
+   async getClassRoomReportById(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { roomId } = req.validatedParams;
+
+      const { data, message, statusCode } = await this.classRoomService.getClassRoomReportById(roomId);
+
+      this.sendResponse(res, statusCode, data, message);
+    } catch (error) {
+      next(error);
+    }
+  } 
 }

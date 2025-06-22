@@ -1,6 +1,7 @@
 import { Document, Model } from 'mongoose';
 import { IClassSessions } from './classSessions.interface';
 import { IParticipants } from './participants.interface';
+import { IEventLog } from './eventLog.interface';
 
 export interface IClassRoom extends Document {
   roomId: string;
@@ -9,6 +10,7 @@ export interface IClassRoom extends Document {
   teacherParticipant: string[];
   studentParticipant: string[];
   participantHistory: string[];
+  eventLog: Array<IEventLog>;
   isActive: boolean;
 }
 

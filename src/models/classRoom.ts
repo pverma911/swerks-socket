@@ -9,6 +9,7 @@ const classroomSchema = new Schema<IClassRoom, IClassRoomModel>(
     teacherParticipant: [{ type: Schema.Types.ObjectId, ref: 'Participant' }],
     studentParticipant: [{ type: Schema.Types.ObjectId, ref: 'Participant' }],
     participantHistory: [{ type: Schema.Types.ObjectId, ref: 'Participant' }],
+    eventLog: [{ type: Schema.Types.ObjectId, ref: 'EventLog' }],
     ...BaseModel.getSchemaFields(),
   },
   BaseModel.getSchemaOptions()

@@ -1,3 +1,4 @@
+import moment from 'moment';
 import { HttpStatusCode } from '../enums/httpStatusCode.enum';
 import { UserRole } from '../enums/userRole.enum';
 import { ICreateClassRoom, IJoinClassRoom } from '../interfaces/classRoom.interface';
@@ -267,5 +268,70 @@ export class ClassRoomService extends ResponseService {
     }
 
     return user;
+  }
+
+  async getClassRoomReportById(roomId: string) {
+    const classroom = await ClassRoom.findById(roomId)
+      .populate('studentParticipant')
+      .populate('teacherParticipant')
+      .populate({
+        path: 'eventLog',
+        populate: {
+          path: 'participant',
+          select: 'name role',
+        },
+        select: 'type participant timestamp',
+      });
+
+    if (!classroom) {
+      return this.serviceResponse(HttpStatusCode.NOT_FOUND, {}, 'Class room not found');
+    }
+
+    const sessions = await ClassSession.find({ classRoomId: classroom._id })
+      .select('startedAt endedAt eventLog')
+      .populate({
+        path: 'eventLog',
+        populate: {
+          path: 'participant',
+          select: 'name role',
+        },
+        select: 'type participant timestamp',
+      })
+      .lean();
+
+    return this.serviceResponse(
+      HttpStatusCode.OK,
+      {
+        classRoom: {
+          name: classroom.name,
+          roomId: classroom.roomId,
+
+          eventLog: classroom.eventLog.map((event: any) => {
+            const participant = event.participant as { name?: string; role?: string } | null;
+            return {
+              type: event.type,
+              name: participant?.name || null,
+              role: participant?.role || event.role || null,
+              timestamp: moment(event.timestamp).format('YYYY-MM-DD HH:mm:ss'),
+            };
+          }),
+
+          sessions: sessions.map((session) => ({
+            startedAt: moment(session.startedAt).format('YYYY-MM-DD HH:mm:ss'),
+            endedAt: moment(session.endedAt).format('YYYY-MM-DD HH:mm:ss'),
+            eventLog: session.eventLog.map((event: any) => {
+              const participant = event.participant as { name?: string; role?: string } | null;
+              return {
+                type: event.type,
+                name: participant?.name || null,
+                role: participant?.role || event.role || null,
+                timestamp: moment(event.timestamp).format('YYYY-MM-DD HH:mm:ss'),
+              };
+            }),
+          })),
+        },
+      },
+      'Class room report retrieved successfully'
+    );
   }
 }
