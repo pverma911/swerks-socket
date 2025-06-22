@@ -147,6 +147,32 @@ export class ClassRoomService extends ResponseService {
     return classroom;
   }
 
+  async activeSessionsList() {
+    // Create a session for the class
+    const session = await ClassSession.find({
+      endedAt: { $exists: false },
+    })
+      .populate('classRoomId')
+      .lean();
+
+    if (!session) throw new Error('Session does not exist');
+
+    return session;
+  }
+
+  async activeSessionsList() {
+    // Create a session for the class
+    const session = await ClassSession.find({
+      endedAt: { $exists: false },
+    })
+      .populate('classRoomId')
+      .lean();
+
+    if (!session) throw new Error('Session does not exist');
+
+    return session;
+  }
+
   findByClassRoomId(roomId: string) {
     return ClassRoom.findById(roomId).populate('studentParticipant').populate('teacherParticipant');
   }

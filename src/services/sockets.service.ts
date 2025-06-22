@@ -53,10 +53,12 @@ export class SocketService {
 
       socket.on('end-class', () => this.handleEndClass(socket));
 
+      socket.on('get-active-sessions', () => this.handlActiveSessionList(socket));
+
       socket.on('disconnect', () => this.handleDisconnect(socket));
     });
 
-    logger.info("Sockets has been initialized")
+    logger.info('Sockets has been initialized');
   }
 
   /**
@@ -92,7 +94,43 @@ export class SocketService {
 
       logger.info(`${participant.name} joined classroom ${roomId}`);
     } catch (error) {
-      console.log(error)
+      console.log(error);
+      this.emitError(socket, (error as Error).message);
+      logger.error('Join classroom error:', error);
+    }
+  }
+
+   async handleJoinSessionViaList(socket: Socket, data: IJoinClassRoom): Promise<void> {
+    try {
+      // const { error } = validateJoinRequest(data);
+      // if (error) {
+      //   this.emitError(socket, error.details[0].message);
+      //   return;
+      // }
+
+      const { sessionId, participant } = data;
+      const classParticipant = await this.classroomService.joinClassroom(data);
+
+      // Set socket properties
+      socket.join(roomId);
+      socket.data.userId = String(classParticipant._id);
+      socket.data.roomId = roomId;
+      socket.data.role = classParticipant.role;
+
+      const classroomState = await this.classroomService.findByClassRoomId(roomId);
+
+      // Emit to all participants in the room
+      this.io.to(roomId).emit('classroom-updated', classroomState);
+
+      // Send success response to the joining participant
+      socket.emit('join-success', {
+        message: 'Successfully joined classroom',
+        classroom: classroomState,
+      });
+
+      logger.info(`${participant.name} joined classroom ${roomId}`);
+    } catch (error) {
+      console.log(error);
       this.emitError(socket, (error as Error).message);
       logger.error('Join classroom error:', error);
     }
@@ -144,13 +182,26 @@ export class SocketService {
         socket.data.roomId,
         socket.data.userId
       );
-      socket.data.sessionId = session._id
+      socket.data.sessionId = session._id;
 
       this.io.to(socket.data.roomId!).emit('class-session-updated', session);
       this.io.to(socket.data.roomId!).emit('class-room-created', {
         message: 'Class Room has started',
         startedBy: socket.data.userId,
       });
+
+      logger.info(`Class Room created with id ${socket.data.roomId} by ${socket.data.userId}`);
+    } catch (error) {
+      this.emitError(socket, (error as Error).message);
+      logger.error('Start class error:', error);
+    }
+  }
+
+  public async handlActiveSessionList(socket: Socket): Promise<void> {
+    try {
+      const sessions = await this.classroomService.activeSessionsList();
+
+      socket.emit('active-sessions-list', sessions);
 
       logger.info(`Class Room created with id ${socket.data.roomId} by ${socket.data.userId}`);
     } catch (error) {
